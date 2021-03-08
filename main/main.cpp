@@ -55,7 +55,7 @@ byte BoxWidth = 3;
 byte BoxHeight = 3;
  
 int x, y;
-char buf[20];
+char buf[64];
  
 // variable to toggle the display grid
 int ShowGrid = -1;
@@ -252,37 +252,6 @@ void Getabcd() {
 
 }
 
-// function to handle screen touches
-//void ProcessTouch() {
-//
-//  Touch.read();
-//
-//  x = Touch.getX();
-//  y = Touch.getY();
-
-// yea i know better to have buttons
-//  if (x > 200) {
-//    if (y < 80) {
-//      KeyPad(MaxTemp);
-//    }
-//    else if (y > 160) {
-//      KeyPad(MinTemp);
-//    }
-//    else {
-//      DefaultTemp = DefaultTemp * -1;
-//      SetTempScale();
-//    }
-//  }
-
-//  else if (x <= 200) {
-// toggle grid
-//    ShowGrid = ShowGrid * -1;
-//    if (ShowGrid > 0) {
-//      Display.fillRect(15, 15, 210, 210, C_BLACK);
-//    }
-//  }
-//}
-
 // function to draw a cute little legend
 void DrawLegend() {
 
@@ -330,7 +299,9 @@ void drawMeasurement() {
 
 int measureBattery() {
   uint16_t adcValue = analogRead(ADC_IN);
-  int volt = adcValue / 102.3 * 4.5;// Using 130kOhm resistor
+  int volt = adcValue * 33 / (1 << 11); // 12 bit ADC + we need to multiply by 2 because HW divider;
+  sprintf(buf, "Bat: %d:%d", (unsigned int) adcValue, (int) volt);
+  Serial.println(buf);
   return volt;
 }
 
@@ -348,21 +319,8 @@ void drawBattery()  {
   else Display.fillRect(199, 305, volt * 3 - 2, 8, C_RED);
 }
 
-
-extern "C" void app_main()
+void variant1()
 {
-    initArduino();
-    // Do your own thing
-
-    Serial.begin(115200);
-
-    // start the display and set the background to black
-    Display.begin();
-    Display.fillScreen(C_BLACK);
-
-    // set display rotation (you may need to change to 0 depending on your display
-    Display.setRotation(0);    
-
     Display.setTextSize(2);
     Display.setCursor(62, 61);
     Display.setTextColor(C_WHITE, C_BLACK);
@@ -482,8 +440,69 @@ extern "C" void app_main()
         // Update battery everx 30s
         if (batteryTime < millis()) {
             drawBattery();
-            batteryTime = millis() + 30000;
+            batteryTime = millis() + 10000;
         }
 
     }
+}
+
+void variant2()
+{
+    uint16_t displayPixelWidth, displayPixelHeight;
+    
+    displayPixelWidth = Display.width() / 8;
+    displayPixelHeight = Display.height() / 8;
+    
+    bool status;
+    
+    // default settings
+    status = ThermalSensor.begin();
+    if (!status) {
+        Serial.println("Could not find a valid AMG88xx sensor, check wiring!");
+        while (1);
+    }
+    
+    Serial.println("-- Thermal Camera Test --");
+    delay(100); // let sensor boot up
+
+    Getabcd();
+
+    while(1)
+    {
+        //read all the pixels
+        ThermalSensor.readPixels(pixels);
+
+        for(int i=0; i<AMG88xx_PIXEL_ARRAY_SIZE; i++){
+            //draw the pixels!
+            Display.fillRect(displayPixelHeight * floor(i / 8), displayPixelWidth * (i % 8),
+                displayPixelHeight, displayPixelWidth, GetColor(pixels[i]));
+        }
+    }
+}
+
+
+extern "C" void app_main()
+{
+    initArduino();
+    // Do your own thing
+
+    Serial.begin(115200);
+
+    pinMode(BUTTON_1, INPUT);
+    pinMode(BUTTON_2, INPUT);
+    pinMode(BUTTON_3, INPUT);
+
+    pinMode(ADC_IN, ANALOG);
+
+    // start the display and set the background to black
+    Display.begin();
+    Display.fillScreen(C_BLACK);
+
+    // set display rotation (you may need to change to 0 depending on your display
+    Display.setRotation(0);    
+
+    if(!digitalRead(BUTTON_1))
+      variant2();
+    else
+      variant1();
 }
